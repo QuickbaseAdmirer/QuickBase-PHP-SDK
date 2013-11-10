@@ -1,4 +1,4 @@
- <?php
+<?php
  /*----------------------------------------------------------------------
  Title : QuickBase PHP SDK
  Author : Joshua McGinnis (joshua_mcginnis@intuit.com)
