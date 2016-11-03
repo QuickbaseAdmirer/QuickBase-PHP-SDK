@@ -17,6 +17,7 @@
  -----------------------------------------------------------------------*/
 	var $user_name   = ''; 	// QuickBase user who will access the QuickBase
 	var $passwd      = '';	// Password of this user
+	var $user_token      = '';	// Valid user token
 	var $db_id       = ''; 	// Table/Database ID of the QuickBase being accessed
 	var $app_token   = '';
 	var $xml         = true;
@@ -31,13 +32,19 @@
 	var $output = "";
 	var $ticket = '';
  /* --------------------------------------------------------------------*/	
-	public function __construct($un, $pw, $usexml = true, $db = '', $token = '', $realm = '', $hours = '') {
+	public function __construct($un, $pw, $user_token='', $usexml = true, $db = '', $token = '', $realm = '', $hours = '') {
+	    
 		if($un) {
 			$this->user_name = $un;
 		}
 		if($pw) {
 			$this->passwd = $pw;
 		}
+		
+		if($user_token) {
+			$this->user_token = $user_token;
+		}
+		
 		if($db) {
 			$this->db_id = $db;
 		}
@@ -51,10 +58,16 @@
 			$this->ticketHours = (int) $hours;
 		}		
 		$this->xml = $usexml;
-		$uid = $this->authenticate();
-		if($uid) {
-			$this->user_id = $uid;
-		}
+		
+		if ($this->username)
+		{
+            $uid = $this->authenticate();
+        
+            if($uid) {
+                $this->user_id = $uid;
+            }
+        }
+		
 	}
 	public function set_xml_mode($bool) {
 		$this->xml = $bool;
@@ -105,12 +118,15 @@
 	}
 	/* API_Authenticate: http://www.quickbase.com/api-guide/index.html#authenticate.html */
 	public function authenticate() {
+	    
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('username',$this->user_name);
 			$xml_packet->addChild('password',$this->passwd);
 			if ($this->ticketHours)
 				$xml_packet->addChild('hours',$this->ticketHours);
+				
+            // this doesn't get called when used in usertoken mode
 			$xml_packet->addChild('ticket',$this->ticket);
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_Authenticate', $this->qb_ssl."main");
@@ -130,12 +146,30 @@
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('label',$field_name);
 			$xml_packet->addChild('type',$type);
-			$xml_packet->addChild('ticket',$this->ticket);
+			
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+    		}
+			
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_AddField');
 		}
 		else {
-			$url_string = $this->qb_ssl . $this->db_id. "?act=API_AddField&ticket=". $this->ticket ."&label=" .$field_name."&type=".$type;
+		    
+			if ($this->user_token)
+			{
+    			$url_string = $this->qb_ssl . $this->db_id. "?act=API_AddField&usertoken=". $this->user_token ."&label=" .$field_name."&type=".$type;
+    		}
+    		else
+    		{
+    			$url_string = $this->qb_ssl . $this->db_id. "?act=API_AddField&ticket=". $this->ticket ."&label=" .$field_name."&type=".$type;
+    		}
+			
 			$response = $this->transmit($url_string);
 		}
 		if($response->errcode == 0) {
@@ -164,12 +198,31 @@
 			}
 			if ($this->app_token)
 				$xml_packet->addChild('apptoken', $this->app_token);
-			$xml_packet->addChild('ticket',$this->ticket);
+			
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+			
 			$xml_packet = $xml_packet->asXML();	
 			$response = $this->transmit($xml_packet, 'API_AddRecord');
 		}
 		else {
-			$url_string = $this->qb_ssl . $this->db_id. "?act=API_AddRecord&ticket=". $this->ticket;
+			
+			if ($this->user_token)
+			{
+    			$url_string = $this->qb_ssl . $this->db_id. "?act=API_AddRecord&usertoken=". $this->user_token;
+			}
+			else
+			{
+    			$url_string = $this->qb_ssl . $this->db_id. "?act=API_AddRecord&ticket=". $this->ticket;
+			}
+
+			
 			foreach ($fields as $field) {
 					$url_string .= "&_fid_" . $field['fid'] . "=" . urlencode($field['value']) . "";
 				}
@@ -191,19 +244,42 @@
 			$xml_packet->addChild('saveviews',$save_views);
 			$xml_packet->addChild('delete',$delete);
 			$xml_packet->addChild('admin',$admin);
-			$xml_packet->addChild('ticket',$this->ticket);
+			
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+			
+			
 			$xml_packet = $xml_packet->asXML();			
 			$response = $this->transmit($xml_packet, 'API_ChangePermission');
 		}
 		else {
-			$url_string = $this->qb_ssl . $this->db_id. "?act=API_ChangePermission&ticket=". $this->ticket
-					. "&uname=".$uname
+		    
+		    
+			$url_string = $this->qb_ssl . $this->db_id. "?act=API_ChangePermission"
+					."&uname=".$uname
 					."&modify=".$modify
 					."&view=".$view
 					."&create=".$create
 					."&saveviews=".$save_views
 					."&delete=".$delete
 					."&admin=".$admin;
+				
+			if ($this->user_token)
+			{
+    			$url_string .= "&usertoken=".$this->user_token;
+			}
+			else
+			{
+    			$url_string .= "&ticket=". $this->ticket;
+			}
+			
+					
 			$response = $this->transmit($url_string);
 		}
 		if($response) {
@@ -217,7 +293,15 @@
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('rid',$rid);
 			$xml_packet->addChild('newowner',$new_owner);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();				
 			$response = $this->transmit($xml_packet, 'API_ChangeRecordOwner');
 		}
@@ -239,7 +323,15 @@
 			$xml_packet->addChild('newdbname',$new_name);
 			$xml_packet->addChild('newdbdesc',$new_desc);
 			$xml_packet->addChild('keepData',$keep_data);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_CloneDatabase');
 		}
@@ -261,7 +353,15 @@
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('dbname',$db_name);
 			$xml_packet->addChild('dbdesc',$db_desc);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();	
 			$response = $this->transmit($xml_packet, 'API_CreateDatabase');
 		}
@@ -280,7 +380,15 @@
 	public function delete_database() {
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();			
 			$response = $this->transmit($xml_packet, 'API_DeleteDatabase');
 		}
@@ -298,7 +406,15 @@
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('fid',$fid);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_DeleteField');
 		}
@@ -317,7 +433,15 @@
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('rid',$rid);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();			
 			$response = $this->transmit($xml_packet, 'API_DeleteRecord');
 		}
@@ -435,7 +559,16 @@
 			}
 			if ($this->app_token)
 				$xml_packet->addChild('apptoken', $this->app_token);
-			$xml_packet->addChild('ticket',$this->ticket);
+				
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();	
 			$response = $this->transmit($xml_packet, 'API_EditRecord');
 		}
@@ -466,7 +599,15 @@
 			foreach($choices as $choice) {
 				$xml_packet->addChild('choice',$choice);
 			}
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_FieldAddChoices');
 		}
@@ -491,7 +632,15 @@
 			foreach($choices as $choice) {
 				$xml_packet->addChild('choice',$choice);
 			}
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_FieldRemoveChoices');
 		}
@@ -650,7 +799,15 @@
 	public function get_num_records() {
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_GetNumRecords');
 		}
@@ -665,7 +822,15 @@
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('rid',$rid);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_GetRecordAsHTML', "", false);
 		}
@@ -684,7 +849,15 @@
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('rid',$rid);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_GetRecordInfo');
 		}
@@ -702,10 +875,19 @@
 	public function get_schema () {
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
-			$xml_packet->addChild('ticket',$this->ticket);
-                        if ($this->app_token)
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
+            if ($this->app_token)
 				$xml_packet->addChild('apptoken', $this->app_token);
-                        $xml_packet = $xml_packet->asXML();
+				
+            $xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_GetSchema');
 		}
 		else {
@@ -722,7 +904,15 @@
   public function get_user_role () {
 	  if($this->xml) {
 	    $xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
-	    $xml_packet->addChild('ticket',$this->ticket);
+        if ($this->user_token)
+        {
+            $xml_packet->addChild('usertoken',$this->user_token);
+        }
+        else
+        {
+            $xml_packet->addChild('ticket',$this->ticket);
+        }
+
 
 	                      if ($this->app_token)
 	      $xml_packet->addChild('apptoken', $this->app_token);
@@ -746,7 +936,15 @@
 	public function granted_dbs () {
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_GrantedDBs');
 		}
@@ -766,8 +964,15 @@
 			$xml_packet->addChild('records_csv',$records_csv);
 			$xml_packet->addChild('clist',$clist);
 			$xml_packet->addChild('skipfirst',$skip_first);
-			$xml_packet->addChild('ticket',$this->ticket);
-                        $xml_packet->addChild('apptoken',$this->app_token);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+            $xml_packet->addChild('apptoken',$this->app_token);
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_ImportFromCSV');
 		}
@@ -850,7 +1055,14 @@
 			}
 			if ($this->app_token)
 				$xml_packet->addChild('apptoken', $this->app_token);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_SetFieldProperties');
 		}
@@ -879,7 +1091,15 @@
 		if($this->xml) {
 			$xml_packet = new SimpleXMLElement('<qdbapi></qdbapi>');
 			$xml_packet->addChild('id',$id);
-			$xml_packet->addChild('ticket',$this->ticket);
+			if ($this->user_token)
+			{
+    			$xml_packet->addChild('usertoken',$this->user_token);
+			}
+			else
+			{
+    			$xml_packet->addChild('ticket',$this->ticket);
+			}
+
 			$xml_packet = $xml_packet->asXML();
 			$response = $this->transmit($xml_packet, 'API_RunImport');
 		}
